@@ -2302,6 +2302,7 @@ argument - MSG to insert additional information after header."
                                     :align 'left
                                     :elide t
                                     :elide-trail 20)
+        (telega-ins "  ")
         ;; NOTE: if channel post has a signature, then use it instead
         ;; of username to shorten message header
         (let ((signature (telega-tl-str msg :author_signature)))
@@ -2726,6 +2727,8 @@ ADDON-HEADER-INSERTER is passed directly to `telega-ins--message-header'."
             (telega-ins (make-string awidth ?\s)))
 
         ;; Show user profile when clicked on avatar, header
+        (telega-ins--with-face 'telega-delim-face
+          (telega-ins "\n"))
         (telega-ins--with-props
             (list 'action (lambda (button)
                             ;; NOTE: check for custom message :action first
