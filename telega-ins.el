@@ -2724,10 +2724,11 @@ ADDON-HEADER-INSERTER is passed directly to `telega-ins--message-header'."
                (zerop (plist-get msg :via_bot_user_id)))
           (telega-ins--line-wrap-prefix (when unread-mention-p
                                           (telega-symbol 'mention-mark))
-            (telega-ins (make-string awidth ?\s)))
+            (telega-ins (propertize (make-string awidth ?\s) 'face '(:inherit 'fixed-pitch))))
 
         ;; Show user profile when clicked on avatar, header
         (telega-ins--with-face 'telega-delim-face
+          (telega-ins--move-to-column telega-chat-fill-column)
           (telega-ins "\n"))
         (telega-ins--with-props
             (list 'action (lambda (button)
@@ -2751,7 +2752,8 @@ ADDON-HEADER-INSERTER is passed directly to `telega-ins--message-header'."
                avatar 1
                :no-display-if (not telega-chat-show-avatars))))))
 
-      (setq content-prefix (make-string (+ awidth l1width) ?\s))
+      (setq content-prefix
+            (propertize (make-string (+ awidth l1width) ?\s) 'face '(:inherit 'fixed-pitch)))
       (telega-ins--line-wrap-prefix content-prefix
         (telega-ins--fwd-info-inline fwd-info))
       ;; NOTE: Three lines avatars in "Replies" chat
