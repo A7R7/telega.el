@@ -38,11 +38,17 @@
   "Day names starting from sunday.")
 
 (defcustom telega-i18n-plural-rule-functions
-  (list (cons "en" 'telega-i18n-plural-rule-en)
-        (cons "ru" 'telega-i18n-plural-rule-ru))
+  (list (cons "en" #'telega-i18n-plural-rule-en)
+        (cons "ru" #'telega-i18n-plural-rule-ru))
   "Alist of plural rules functions."
   :type 'alist
   :group 'telega)
+
+(defconst telega-i18n--alias-alist
+  '(("telega_show" . "lng_usernames_activate_confirm")
+    ("telega_loading" . "lng_profile_loading")
+    ("telega_for_n_hours" . "lng_mute_duration_hours"))
+  "i18n names aliases alist.")
 
 (defconst telega-i18n--en-strings nil
   "English language strings.
@@ -114,6 +120,8 @@ Loaded from \"etc/langs/en.plist\" in `telega-i18n-init'.")
   "Apply plural rule corresponding N value.
 Return one of: `:zero_value', `:one_value', `:two_value',
 `:few_value', `:many_value' or `:other_value'."
+  (when (floatp n)
+    (setq n (floor n)))
   (or (and telega-i18n--plural-func
            (funcall telega-i18n--plural-func n))
       :other_value))
@@ -146,7 +154,8 @@ Return one of: `:zero_value', `:one_value', `:two_value',
 (defun telega-i18n (key &rest args)
   "Get I18N string for the KEY."
   (declare (indent 1))
-  (let* ((str (or (cdr (assoc key telega-i18n--strings))
+  (let* ((key (or (cdr (assoc key telega-i18n--alias-alist)) key))
+         (str (or (cdr (assoc key telega-i18n--strings))
                   (cdr (assoc key telega-i18n--en-strings))))
          (val (or (telega-tl-str str :value)
                   (let ((count (plist-get args :count)))

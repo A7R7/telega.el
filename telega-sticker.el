@@ -418,10 +418,10 @@ If SLICES-P is non-nil, then insert STICKER using slices."
              (telega-sticker--image sticker))))
 
 (defun telega-ins--stickerset-change-button (sset)
-  (telega-ins--button (if (telega-stickerset-installed-p sset)
-                          ;; I18N: XXX
-                          "Uninstall"
-                        "Install")
+  (telega-ins--box-button (if (telega-stickerset-installed-p sset)
+                              ;; I18N: XXX
+                              "Uninstall"
+                            "Install")
     :value sset
     'action 'telega-button--stickerset-change-action))
 
@@ -471,6 +471,8 @@ COLUMN specifies column to fill stickers into.  By default
 CUSTOM-ACTION - function accepting single argument (a sticker) to be
 called when some sticker is selected."
   (declare (indent 1))
+  (unless column
+    (setq column (current-fill-column)))
   (seq-doseq (sticker stickers)
     (telega-ins-prefix (unless (bolp) "\n")
       (telega-button--insert 'telega-sticker sticker
@@ -488,7 +490,7 @@ called when some sticker is selected."
 
       ;; NOTE: `telega-ins-prefix' will insert "\n" if next sexp
       ;; evaluates to non-nil
-      (> (current-column) (or column (current-fill-column))))
+      (and (> column 0) (> (current-column) column)))
     ;; (redisplay)
     ))
 
@@ -499,29 +501,29 @@ SSET can be either `sticker' or `stickerSetInfo'."
     (setq telega--chat for-chat)
     (setq telega-help-win--stickerset sset)
 
-    (telega-ins "Title: " (telega-tl-str sset :title))
-    (when (plist-get sset :is_official)
-      (telega-ins (telega-symbol 'verified)))
-    (telega-ins " ")
-    (telega-ins--stickerset-change-button sset)
-    (telega-ins "\n")
-    (telega-ins "Link:  ")
-    (let ((link (concat (or (plist-get telega--options :t_me_url)
-                            "https://t.me/")
-                        "addstickers/" (plist-get sset :name))))
-      (telega-ins--raw-button (telega-link-props 'url link 'face 'telega-link)
-        (telega-ins link))
-      (telega-ins "\n"))
+    (telega-ins-describe-item "Title"
+      (telega-ins (telega-tl-str sset :title))
+      (when (plist-get sset :is_official)
+        (telega-ins (telega-symbol 'verified)))
+      (telega-ins " ")
+      (telega-ins--stickerset-change-button sset))
+    (telega-ins-describe-item "Link"
+      (let ((link (concat (or (plist-get telega--options :t_me_url)
+                              "https://t.me/")
+                          "addstickers/" (plist-get sset :name))))
+        (telega-ins--raw-button (telega-link-props 'url link 'face 'telega-link)
+          (telega-ins link))))
     (when telega-debug
-      (telega-ins-fmt "Get: (telega-stickerset-get \"%s\")\n"
-        (plist-get sset :id)))
+      (telega-ins-describe-item "Get"
+        (telega-ins-fmt "(telega-stickerset-get \"%s\")"
+          (plist-get sset :id))))
 
     ;; NOTE: In case SSET is "stickerSetInfo" fetch real sticker set
     ;; and insert all the stickers
     (let ((sticker-list-ins
            (lambda (sticker-set)
              (let ((stickers (plist-get sticker-set :stickers)))
-               (telega-ins-fmt "%s: %d\n"
+               (telega-ins-describe-item
                  (cl-ecase (telega--tl-type (plist-get sticker-set :sticker_type))
                    (stickerTypeMask "Masks")
                    (stickerTypeCustomEmoji "Custom Emoji Stickers")
@@ -531,8 +533,8 @@ SSET can be either `sticker' or `stickerSetInfo'."
                       (stickerFormatTgs  "Animated Stickers")
                       (stickerFormatWebm "Video Stickers")
                       (stickerFormatWebp "Stickers"))))
-                 (length stickers))
-               (telega-ins--sticker-list stickers))))
+                 (telega-ins-fmt "%d\n" (length stickers))
+                 (telega-ins--sticker-list stickers)))))
           (sset-id (plist-get sset :id)))
       (when (eq (telega--tl-type sset) 'stickerSetInfo)
         (setq sset (telega-stickerset-get sset-id 'locally)))
@@ -586,31 +588,37 @@ stickers for the EMOJI."
       (setq telega-help-win--emoji emoji)
 
       ;; NOTE: use callbacks for async stickers loading
-      (telega-ins-fmt "Custom Emoji for %s:\n" emoji)
-      (telega--getStickers emoji
-        :chat for-chat
-        :tl-sticker-type '(:@type "stickerTypeCustomEmoji")
-        :callback (telega--gen-ins-continuation-callback 'loading
-                    (lambda (stickers &rest args)
-                      (apply #'telega-ins--sticker-list
-                             (mapcar #'telega-custom-emoji-from-sticker
-                                     stickers)
-                             args))))
+      (telega-ins--with-face 'telega-describe-item-title
+        (telega-ins-fmt "Custom Emoji for %s:\n" emoji))
+      (telega-ins--line-wrap-prefix "  "
+        (telega--getStickers emoji
+          :chat for-chat
+          :tl-sticker-type '(:@type "stickerTypeCustomEmoji")
+          :callback (telega--gen-ins-continuation-callback 'loading
+                      (lambda (stickers &rest args)
+                        (apply #'telega-ins--sticker-list
+                               (mapcar #'telega-custom-emoji-from-sticker
+                                       stickers)
+                               args)))))
 
       (unless custom-emojis-only
         (telega-ins "\n")
-        (telega-ins "\nInstalled Stickers:\n")
-        (telega--getStickers emoji
-          :callback (telega--gen-ins-continuation-callback 'loading
-                      #'telega-ins--sticker-list))
+        (telega-ins--with-face 'telega-describe-item-title
+          (telega-ins "Installed Stickers:\n"))
+        (telega-ins--line-wrap-prefix "  "
+          (telega--getStickers emoji
+            :callback (telega--gen-ins-continuation-callback 'loading
+                        #'telega-ins--sticker-list))
+          (telega-ins "\n"))
 
-        (telega-ins "\n")
-        (telega-ins "\nPublic Stickers:\n")
-        (telega--searchStickers emoji
-          :callback
-          (telega--gen-ins-continuation-callback 'loading
-            #'telega-ins--sticker-list)))
-    )))
+        (telega-ins--with-face 'telega-describe-item-title
+          (telega-ins "Public Stickers:\n"))
+        (telega-ins--line-wrap-prefix "  "
+          (telega--searchStickers emoji
+            :callback
+            (telega--gen-ins-continuation-callback 'loading
+              #'telega-ins--sticker-list))))
+      )))
 
 (defun telega-stickerset--minibuf-post-command ()
   "Function to complete stickerset for `completion-in-region-function'."

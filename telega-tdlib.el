@@ -260,10 +260,12 @@ all messages must have same user sender."
    (list :@type "closeSecretChat"
          :secret_chat_id (plist-get secretchat :id))))
 
-(defun telega-chat-message-thread-id (chat)
-  "Return current message_thread_id for the CHAT."
+(defun telega-chat-message-thread-id (chat &optional only-if-topic-p)
+  "Return current message_thread_id for the CHAT.
+If ONLY-IF-TOPIC-P is specified, then return thread id only if topic
+is enabled."
   (or (with-telega-chatbuf chat
-        (telega-chatbuf--message-thread-id))
+        (telega-chatbuf--message-thread-id only-if-topic-p))
       0))
 
 (defun telega--sendChatAction (chat action)
@@ -830,6 +832,7 @@ SCOPE-TYPE is one of:
   "Change notification settings for chats of a given SCOPE-TYPE.
 SCOPE-TYPE is the same as in `telega--getScopeNotificationSettings'.
 SETTINGS is a plist with notification settings to set."
+  (declare (indent 1))
   (let ((scope-settings (telega-chat-notification-scope scope-type))
         (request (list :@type "scopeNotificationSettings")))
     (telega--tl-dolist ((prop-name value) (append scope-settings settings))
@@ -1065,11 +1068,19 @@ Pass REVOKE to try to delete chat history for all users."
                  ;; not set `:message_thread_id', because threads does
                  ;; not have pinned messages, and request with thread
                  ;; id will result in error.
+                 ;; 
+                 ;; NOTE: `searchMessagesFilterUnreadReaction' can
+                 ;; only be used with topics, not with ordinary
+                 ;; threads
                  :message_thread_id
-                 (if (eq 'searchMessagesFilterPinned
-                         (telega--tl-type tdlib-msg-filter))
-                     0
-                   (telega-chat-message-thread-id chat))
+                 (cond  ((eq 'searchMessagesFilterPinned
+                             (telega--tl-type tdlib-msg-filter))
+                         0)
+                        ((eq 'searchMessagesFilterUnreadReaction
+                             (telega--tl-type tdlib-msg-filter))
+                         (telega-chat-message-thread-id chat 'only-topics))
+                        (t
+                         (telega-chat-message-thread-id chat)))
                  :query (or query "")
                  :from_message_id from-msg-id
                  :offset offset
@@ -1165,20 +1176,28 @@ TDLib 1.8.12:
   "Return list of sponsored messages for the CHAT."
   (declare (indent 1))
   (with-telega-server-reply (reply)
-      (unless (telega--tl-error-p reply)
+      (when (and reply (not (telega--tl-error-p reply)))
         reply)
 
     (list :@type "getChatSponsoredMessages"
           :chat_id (plist-get chat :id))
     callback))
 
-(defun telega--viewSponsoredMessage (chat sponsored-msg)
-  "Inform that SPONSORED-MSG has been viewed in the CHAT."
-  (cl-assert (eq 'sponsoredMessage (telega--tl-type sponsored-msg)))
+(defun telega--view-sponsored-messages (chat sponsored-messages)
+  "View SPONSORED-MESSAGES in the CHAT."
   (telega-server--send
    (list :@type "viewMessages"
          :chat_id (plist-get chat :id)
-         :message_ids (vector (plist-get sponsored-msg :message_id)))))
+         :message_ids (cl-map #'vector (telega--tl-prop :message_id)
+                              sponsored-messages))))
+
+(defun telega--clickChatSponsoredMessage (chat sponsored-msg)
+  "Inform that SPONSORED-MSG has been viewed in the CHAT."
+  (cl-assert (eq 'sponsoredMessage (telega--tl-type sponsored-msg)))
+  (telega-server--send
+   (list :@type "clickChatSponsoredMessage"
+         :chat_id (plist-get chat :id)
+         :message_id (plist-get sponsored-msg :message_id))))
 
 
 (defun telega--setAuthenticationPhoneNumber (phone-number)
@@ -1488,8 +1507,6 @@ New slow mode DELAY for the chat must be one of 0, 10, 30, 60,
          :device_model "Emacs"
          :system_version emacs-version
          :application_version telega-version
-         :enable_storage_optimizer telega-enable-storage-optimizer
-         :ignore_file_names :false
          )))
 
 (defun telega--parseTextEntities (text parse-mode)
@@ -2489,6 +2506,7 @@ ROW-SIZE - Number of reaction per row, 5-25."
 (cl-defun telega--getMessageAddedReactions
     (msg &key tl-reaction-type offset limit callback)
   "Return reactions added for a message MSG, along with their sender."
+  (declare (indent 1))
   (unless (plist-get msg :can_get_added_reactions)
     (error "Can't get added reactions for the message"))
 
@@ -2628,6 +2646,15 @@ TO-LANGUAGE-CODE is a two-letter ISO 639-1 language code. "
          :text (if (stringp text)
                    (telega-fmt-text text)
                  text)
+         :to_language_code to-language-code)
+   callback))
+
+(defun telega--translateMessageText (msg to-language-code &key callback)
+  (declare (indent 2))
+  (telega-server--call
+   (list :@type "translateMessageText"
+         :chat_id (plist-get msg :chat_id)
+         :message_id (plist-get msg :id)
          :to_language_code to-language-code)
    callback))
 
@@ -2875,16 +2902,11 @@ Mode activates for
          :chat_id (plist-get chat :id))
    callback))
 
-(defun telega--canBoostChat (chat &optional callback)
-  (telega-server--call
-   (list :@type "canBoostChat"
-         :chat_id (plist-get chat :id))
-   callback))
-
-(defun telega--boostChat (chat)
+(defun telega--boostChat (chat &rest slot-ids)
   (telega-server--send
    (list :@type "boostChat"
-         :chat_id (plist-get chat :id))))
+         :chat_id (plist-get chat :id)
+         :slot_ids (apply 'vector reactions))))
 
 (defun telega--getChatBoostLinkInfo (url &optional callback)
   (telega-server--call
@@ -2915,20 +2937,72 @@ Mode activates for
 (defun telega--getChatSimilarChatCount (chat &optional local-p callback)
   "Return approximate number of chats similar to the given chat."
   (declare (indent 2))
-  (telega-server--call
-   (list :@type "getChatSimilarChatCount"
-         :chat_id (plist-get chat :id)
-         :return_local (if local-p t :false))
-   callback))
+  (with-telega-server-reply (reply)
+      (plist-get reply :count)
+
+    (list :@type "getChatSimilarChatCount"
+          :chat_id (plist-get chat :id)
+          :return_local (if local-p t :false))
+    callback))
 
 (defun telega--getChatSimilarChats (chat &optional callback)
   "Return a list of chats similar to the given CHAT."
+  (declare (indent 1))
   (with-telega-server-reply (reply)
       (mapcar #'telega-chat-get (plist-get reply :chat_ids))
 
     (list :@type "getChatSimilarChats"
           :chat_id (plist-get chat :id))
     callback))
+
+;;; WebApp
+(defun telega--searchWebApp (bot-user webapp-short-name &optional callback)
+  "Returns information about a Web App by its short name."
+  (declare (indent 2))
+  (telega-server--call
+   (list :@type "searchWebApp"
+         :bot_user_id (plist-get bot-user :id)
+         :web_app_short_name webapp-short-name)
+   callback))
+
+(cl-defun telega--getWebAppLinkUrl (chat bot-user webapp-short-name
+                                         &key (start-parameter "")
+                                         theme-params application-name
+                                         allow-write-access-p callback)
+  "Return an HTTPS URL of a Web App.
+URL to open after a link of the type internalLinkTypeWebApp is clicked."
+  (declare (indent 3))
+  (telega-server--call
+   (list :@type "getWebAppLinkUrl"
+         :chat_id (plist-get chat :id)
+         :bot_user_id (plist-get bot-user :id)
+         :web_app_short_name webapp-short-name
+         :start_parameter start-parameter
+         :theme theme-params
+         :application_name application-name
+         :allow_write_access allow-write-access-p)
+   callback))
+
+(cl-defun telega--getWebAppUrl (bot-user &key (url "") tdlib-theme app-name
+                                         callback)
+  "Return an HTTPS URL of a Web App to open."
+  (declare (indent 1))
+  (with-telega-server-reply (reply)
+      (telega-tl-str reply :url)
+    (list :@type "getWebAppUrl"
+          :bot_user_id (plist-get bot-user :id)
+          :url url
+          :theme tdlib-theme
+          :app-name app-name)
+    callback))
+
+(defun telega--getMessageReadDate (msg &optional callback)
+  (declare (indent 1))
+  (telega-server--call
+   (list :@type "getMessageReadDate"
+         :chat_id (plist-get msg :chat_id)
+         :message_id (plist-get msg :id))
+   callback))
 
 (provide 'telega-tdlib)
 

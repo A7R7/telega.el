@@ -57,6 +57,8 @@
 ;; Server runtime vars
 (defvar telega-server--buffer nil)
 (defvar telega-server--extra 0 "Value for :@extra used by `telega-server--call'.")
+(defvar telega-server--callback-extra nil
+  "Bound to extra value when callback is called.")
 (defvar telega-server--callbacks nil "Callbacks ruled by extra")
 (defvar telega-server--results nil)
 (defvar telega-server--on-event-func #'telega--on-event
@@ -251,10 +253,13 @@ Return parsed command."
   (telega-debug "%s %s: %S" cmd (propertize "IN" 'face 'bold) value)
 
   (cond ((string= cmd "event")
-         (let* ((extra (plist-get value :@extra))
-                (call-cb (telega-server--callback-get extra)))
+         (let* ((telega-server--callback-extra (plist-get value :@extra))
+                (call-cb (telega-server--callback-get
+                          telega-server--callback-extra)))
+           ;; NOTE: Some callbacks might stuck in the
+           ;; `telega-server--callbacks' due to runtime errors causing
            (if call-cb
-               (telega-server--callback-rm extra)
+               (telega-server--callback-rm telega-server--callback-extra)
              (setq call-cb telega-server--on-event-func))
 
            ;; Function call may return errors
@@ -392,7 +397,12 @@ Used to optimize events processing in the `telega-server--parse-commands'."
                   (cl-delete cmd-val parsed-commands
                              :test #'telega-server--commands-equal))))
     (dolist (cmd (nreverse parsed-commands))
-      (apply #'telega-server--dispatch-cmd cmd))
+      ;; NOTE: make sure all commands are processed even if some
+      ;; triggers an error
+      (condition-case-unless-debug nil
+          (apply #'telega-server--dispatch-cmd cmd)
+        (error
+         (message "telega: Error while processing cmd %S" cmd))))
 
     (if telega-server--idle-timer
         (timer-set-time telega-server--idle-timer

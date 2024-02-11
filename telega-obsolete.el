@@ -95,7 +95,7 @@
                            'telega-chat-scroll-conservatively
                            "0.7.3")
 (telega-obsolete--variable 'telega-week-day-names
-                           telega-i18n-weekday-names
+                           'telega-i18n-weekday-names
                            "0.7.4")
 (telega-obsolete--variable 'telega-chat-use-markdown-version
                            'telega-chat-input-markups
@@ -210,6 +210,37 @@
 (telega-obsolete--variable 'telega-msg-contains-unread-mention
                            'telega-msg--current
                            "0.8.217")
+
+(telega-obsolete--variable 'telega-root-view-topics
+                           'telega-root-view-grouping-alist
+                           "0.8.230")
+(telega-obsolete--variable 'telega-root-view-topics-folders
+                           'telega-root-view-grouping-folders
+                           "0.8.230")
+(telega-obsolete--variable 'telega-root-view-topics-other-chats
+                           'telega-root-view-grouping-other-chats
+                           "0.8.230")
+(telega-obsolete--variable 'telega-button-endings
+                           'telega-box-button-endings
+                           "0.8.230")
+(telega-obsolete--variable 'telega-symbol-blank-button
+                           nil         ; (telega-symbol 'checkbox-off)
+                           "0.8.230")
+
+(telega-obsolete--variable 'telega-msg-heading-whole-line
+                           nil
+                           "0.8.231")
+
+(telega-obsolete--variable 'telega-adblock-forwarded-messages
+                           'telega-adblock-predicates
+                           "0.8.232")
+
+(telega-obsolete--variable 'telega-enable-storage-optimizer
+                           'telega-options-plist
+                           "0.8.240")
+(telega-obsolete--variable 'telega-old-date-format
+                           'telega-date-format-alist
+                           "0.8.240")
 
 ;; Check some obsolete var/fun is used
 (cl-eval-when (eval load)

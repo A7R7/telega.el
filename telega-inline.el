@@ -72,6 +72,12 @@
   "Action to take when KBD-BUTTON is pressed."
   (let ((kbd-type (plist-get kbd-button :type)))
     (cl-ecase (telega--tl-type kbd-type)
+      (keyboardButtonTypeWebApp
+       (telega-browse-url
+        (telega--getWebAppUrl (telega-msg-sender msg)
+          :url (telega-tl-str kbd-type :url))
+        'in-browser))
+
       (keyboardButtonTypeText
        ;; A simple button, with text that should be sent
        ;; when the button is pressed
@@ -203,8 +209,8 @@
 (defun telega-ins--inline-delim ()
   "Inserter for the delimiter."
   (telega-ins--with-props
-      '(face default display ((space-width 2) (height 0.5)))
-    (telega-ins (make-string 30 ?─) "\n")))
+      '(face underline display ((space-width 2) (height 0.5)))
+    (telega-ins (make-string 30 ?\s) "\n")))
 
 (defun telega-inline-bot--action (qr)
   "Action to take when corresponding query result QR button is pressed."

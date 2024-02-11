@@ -196,7 +196,7 @@
         (telega-ins--topic-title topic 'with-icon))
       (telega-ins " ")
       ;; TODO: [Open] button
-      ;; (telega-ins--button "Open"
+      ;; (telega-ins--box-button "Open"
       ;;                     )
 
       (telega-ins "\n")
@@ -206,7 +206,7 @@
         :action #'telega-chat-button-action)
       (telega-ins "\n")
       (telega-ins "Created: ")
-      (telega-ins--date-iso8601 (plist-get topic-info :creation_date))
+      (telega-ins--date (plist-get topic-info :creation_date) 'date-time)
       (telega-ins "\n")
       (telega-ins (telega-i18n "lng_topic_author_badge") ": ")
       (telega-ins--msg-sender
@@ -223,7 +223,7 @@
 
       ;; TODO: more fields
 
-      (when telega-debug
+      (when (and (listp telega-debug) (memq 'info telega-debug))
         (let ((print-length nil))
           (telega-ins "\n---DEBUG---\n")
           (telega-ins-fmt "TopicSexp: (telega-topic-get (telega-chat-get %d) %d)\n"

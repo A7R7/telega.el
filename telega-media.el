@@ -599,30 +599,40 @@ Return nil if preview image is unavailable."
 ;; TODO: draw tringle inside preview image
 (defun telega-video--create-image (video &optional file)
   "Create image to preview VIDEO content."
-  (if (not (fboundp 'svg-embed-base-uri-image))
+  (if (not telega-use-svg-base-uri)
       (telega-thumb-or-minithumb--create-image video file)
 
     ;; SVG's `:base-uri' is available
-    (let ((thumb (plist-get video :thumbnail))
-          (minithumb (plist-get video :minithumbnail)))
+    (let* ((thumb (plist-get video :thumbnail))
+           (thumb-file (telega-file--renew thumb :file))
+           (minithumb (plist-get video :minithumbnail))
+           (v-width (plist-get video :width))
+           (v-height (plist-get video :height))
+           (cheight (telega-media--cheight-for-limits
+                     v-width v-height telega-video-size-limits))
+           (cw-xmargin (telega-media--cwidth-xmargin v-width v-height cheight))
+           (xh (telega-chars-xheight cheight))
+           (xw (telega-chars-xwidth (car cw-xmargin)))
+           (svg (telega-svg-create xw xh))
+           (base-uri-fname ""))
       (cond ((and (memq (telega--tl-type (plist-get thumb :format))
                         '(thumbnailFormatJpeg thumbnailFormatPng))
-                  (telega-file--downloaded-p (plist-get thumb :file)))
-             (telega-video--create-svg
-              (telega--tl-get thumb :file :local :path) nil
+                  (telega-file--downloaded-p thumb-file))
+             (setq base-uri-fname (telega--tl-get thumb-file :local :path))
+             (telega-svg-embed-image-fitting
+              svg base-uri-fname nil
               (plist-get thumb :width) (plist-get thumb :height)))
 
             (minithumb
-             (telega-video--create-svg
-              (base64-decode-string (plist-get minithumb :data)) t
-              (plist-get minithumb :width)
-              (plist-get minithumb :height)))
+             (telega-svg-embed-image-fitting
+              svg (base64-decode-string (plist-get minithumb :data)) t
+              (plist-get minithumb :width) (plist-get minithumb :height))))
 
-            (t
-             (telega-video--create-svg
-              nil nil
-              (plist-get video :width)
-              (plist-get video :height))))
+      (telega-svg-white-play-triangle-in-circle svg)
+      (telega-svg-image svg :scale 1.0
+                        :base-uri base-uri-fname
+                        :width xw :height xh
+                        :ascent 'center)
       )))
 
 (defun telega-media--image-update (obj-spec file &optional cache-prop)
@@ -839,10 +849,10 @@ By default CREATE-IMAGE-FUN is `telega-avatar--create-image-three-lines'."
    msg-sender (or create-image-fun #'telega-avatar--create-image-three-lines)
    force-update (or cache-prop :telega-avatar-3)))
 
-(defun telega-chat-photo-info-image-one-line (chat-photo-info
-                                              &optional force-update)
+(defun telega-chat-photo-info--image (chat-photo-info
+                                      &optional cheight force-update)
   "Create image for chatPhotoInfo TL structure."
-  (let* ((cheight 1)
+  (let* ((cheight (or cheight 2))
          (create-image-fun
           (lambda (_photoignored &optional _fileignored)
             (let ((small-file (plist-get chat-photo-info :small)))
@@ -859,7 +869,13 @@ By default CREATE-IMAGE-FUN is `telega-avatar--create-image-three-lines'."
     (telega-media--image
      (cons chat-photo-info create-image-fun)
      (cons chat-photo-info :small)
-     force-update)))
+     force-update
+     (intern (format ":telega-%d-lines" cheight)))))
+
+(defun telega-chat-photo-info-image-one-line (chat-photo-info
+                                              &optional force-update)
+  "Create image for chatPhotoInfo TL structure."
+  (telega-chat-photo-info--image chat-photo-info 1 force-update))
 
 
 ;; Location
